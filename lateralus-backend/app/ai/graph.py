@@ -1,11 +1,11 @@
 from typing import Literal
 
+from app.ai.model import Model
 from langchain_core.messages import AIMessage
-from langchain_openai import ChatOpenAI
 from langgraph.constants import END, START
 from langgraph.graph import MessagesState, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel
 
 
 def route(state: MessagesState) -> Literal["tools", "__end__"]:
@@ -15,18 +15,16 @@ def route(state: MessagesState) -> Literal["tools", "__end__"]:
     return END
 
 
-class Graph(BaseModel):
-    def __init__(self, model_name: str, tools: list):
-        super().__init__()
-        self.model = ChatOpenAI(model=model_name)
-        self.tools = tools
-        self.bound = self.model.bind_tools(tools)
+class Graph:
+    def __init__(self, model: Model):
+        self.model = model
+        self.graph = None
 
     def create_graph_agent(self):
         graph = (
             StateGraph(MessagesState)
-            .add_node("model", self.call_model)
-            .add_node("tools", ToolNode(self.tools))
+            .add_node("model", self.model.call_model)
+            .add_node("tools", ToolNode(self.model.tools))
             .add_edge(START, "model")
             .add_conditional_edges("model", route)
             .add_edge("tools", "model")
@@ -35,5 +33,7 @@ class Graph(BaseModel):
 
         return graph
 
-    def call_model(self, state: MessagesState) -> dict:
-        return {"messages": [self.bound.invoke(state["messages"])]}
+    def get_graph(self) -> CompiledStateGraph:
+        if self.graph is None:
+            self.graph = self.create_graph_agent()
+        return self.graph

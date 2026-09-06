@@ -12,7 +12,7 @@ def get_weather(city: str) -> str:
         {
             "city": city,
             "temp_c": 22,
-            "condition": "Partly Cloudy",
+            "condition": "parcialmente nublado",
         },
         ensure_ascii=False,
     )
