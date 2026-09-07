@@ -1,81 +1,79 @@
-import type { ToolCallState } from "../types";
+import { toolCity, type ToolBlock } from "../blocks";
+import { formatJson } from "../stream";
 
 type ToolRendererProps = {
-  toolCall: ToolCallState;
+  block: ToolBlock;
 };
 
-export function ToolRenderer({ toolCall }: ToolRendererProps) {
-  const payload = toolCall.payload;
-  const city = payload?.city ?? toolCall.city ?? "cidade";
+export function ToolRenderer({ block }: ToolRendererProps) {
+  const isDone = block.status === "done";
+  const payload = block.payload;
+  const city = toolCity(block);
   const condition = payload?.condition ?? "Consultando o clima";
   const temp = typeof payload?.temp_c === "number" ? payload.temp_c : undefined;
-  const isComplete = toolCall.status === "complete";
+  const elapsed = elapsedLabel(block);
 
   return (
-    <div className="relative ml-8 w-[min(100%,760px)]">
-      <span className="absolute -left-8 top-6 size-2.5 rounded-full bg-sky-300 shadow-[0_0_18px_rgba(125,211,252,0.9)]" />
-      <article className="rounded-[1.35rem] border border-sky-100/20 bg-[#0f172a]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35),0_0_42px_rgba(56,189,248,0.08)] backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <StatusIcon complete={isComplete} />
-          <span className="font-mono text-lg font-semibold text-slate-200">
-            {toolCall.name}
+    <article
+      className="w-[min(100%,520px)] rounded-lg border border-white/10 bg-[#0f172a] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]"
+      aria-live="polite"
+      aria-busy={!isDone}
+    >
+      <header className="flex min-h-6 items-center gap-3">
+        <StatusIcon complete={isDone} />
+        <code className="font-mono text-sm text-slate-100">{block.name}</code>
+        <span className="max-w-48 truncate rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs text-slate-400">
+          {city}
+        </span>
+        {elapsed ? (
+          <span className="ml-auto font-mono text-xs text-slate-500">
+            {elapsed}
           </span>
-          <span className="rounded-full bg-black/25 px-3 py-1 text-xs text-slate-400">
-            {city}
-          </span>
-          {toolCall.durationSeconds ? (
-            <span className="ml-auto text-xs text-slate-500">
-              {toolCall.durationSeconds.toFixed(1)}s
-            </span>
-          ) : null}
-        </div>
+        ) : null}
+      </header>
 
-        <div className="mt-5 h-0.5 w-full overflow-hidden rounded-full bg-sky-100/15">
-          <div
-            className={`h-full rounded-full bg-sky-300 shadow-[0_0_18px_rgba(56,189,248,0.45)] ${
-              isComplete
-                ? "w-full"
-                : "animate-[loading-progress_2.2s_ease-out_forwards]"
-            }`}
-          />
-        </div>
+      <div className="mt-3 h-0.5 overflow-hidden rounded-full bg-white/10">
+        <span
+          className={`block h-full rounded-full bg-cyan-300 ${
+            isDone ? "w-full" : "animate-[loading-progress_2.2s_ease-out_forwards]"
+          }`}
+        />
+      </div>
 
-        {!isComplete ? (
-          <div>
-            <p className="mt-5 text-xl text-slate-400">
-              Consultando o clima em {city}...
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mt-6 flex items-center gap-7 rounded-xl bg-[#080f1f] px-8 py-6">
-              <WeatherIcon />
+      {isDone ? (
+        <div className="mt-4">
+          <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-4 rounded-md border border-white/10 bg-[#070b13] p-4">
+            <WeatherIcon />
+            <div>
               <div className="flex items-start gap-2">
-                <span className="text-5xl leading-none text-slate-100">
+                <span className="text-4xl leading-none text-slate-100">
                   {temp ?? "--"}
                 </span>
-                <span className="pt-1 text-2xl text-slate-200">°C</span>
+                <span className="pt-1 text-lg text-slate-300">°C</span>
               </div>
-              <div>
-                <p className="text-xl text-slate-300">{capitalize(condition)}</p>
-                <p className="mt-2 text-sm uppercase tracking-[0.35em] text-slate-500">
-                  {city}
-                </p>
-              </div>
+              <p className="mt-2 text-sm text-slate-300">
+                {capitalize(condition)}
+              </p>
+              <p className="mt-1 text-xs uppercase text-slate-500">{city}</p>
             </div>
+          </div>
 
-            <details open className="mt-5">
-              <summary className="cursor-pointer select-none font-mono text-xs uppercase tracking-[0.28em] text-slate-500">
-                JSON
-              </summary>
-              <pre className="mt-3 overflow-auto rounded-xl bg-black/45 p-4 font-mono text-sm leading-7 text-slate-300">
-                {JSON.stringify(toolCall.rawJson ?? payload, null, 2)}
-              </pre>
-            </details>
-          </>
-        )}
-      </article>
-    </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer select-none font-mono text-xs uppercase text-slate-500">
+              JSON
+            </summary>
+            <pre className="mt-2 max-h-56 overflow-auto rounded-md bg-black/35 p-3 font-mono text-xs leading-6 text-slate-300">
+              {formatJson(block.output)}
+            </pre>
+          </details>
+        </div>
+      ) : (
+        <p className="m-0 mt-3 text-sm text-slate-400">
+          Consultando o clima em {city}
+          <span className="dots" aria-hidden />
+        </p>
+      )}
+    </article>
   );
 }
 
@@ -85,7 +83,7 @@ function StatusIcon({ complete }: { complete: boolean }) {
       className={`grid size-5 place-items-center rounded-full border ${
         complete
           ? "border-emerald-300/70 text-emerald-200"
-          : "animate-spin border-slate-500 border-t-sky-300"
+          : "animate-spin border-slate-500 border-t-cyan-300"
       }`}
     >
       {complete ? <span className="text-xs">✓</span> : null}
@@ -100,9 +98,14 @@ function WeatherIcon() {
       aria-hidden
       src="/partly-cloudy.png"
       alt=""
-      className="size-20 object-contain brightness-0 invert drop-shadow-[0_0_16px_rgba(191,219,254,0.35)]"
+      className="size-16 object-contain brightness-0 invert drop-shadow-[0_0_16px_rgba(191,219,254,0.3)]"
     />
   );
+}
+
+function elapsedLabel(block: ToolBlock): string | undefined {
+  if (block.startedAt === undefined || block.endedAt === undefined) return undefined;
+  return `${((block.endedAt - block.startedAt) / 1000).toFixed(1)}s`;
 }
 
 function capitalize(value: string) {

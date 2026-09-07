@@ -1,13 +1,16 @@
-import type { StreamEventEnvelope, WeatherPayload } from "./types";
-
-export type ParsedSseEvent = {
-  event?: string;
-  data: StreamEventEnvelope;
-};
+import {
+  isEventType,
+  UnknownEventError,
+  type AgentEvent,
+  type LcMessage,
+  type StreamEventEnvelope,
+  type ToolCall,
+  type WeatherPayload,
+} from "./types";
 
 export async function* parseAgentStream(
   body: ReadableStream<Uint8Array>,
-): AsyncGenerator<ParsedSseEvent> {
+): AsyncGenerator<AgentEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -22,17 +25,13 @@ export async function* parseAgentStream(
 
       for (const frame of frames) {
         const parsed = parseSseFrame(frame);
-        if (parsed) {
-          yield parsed;
-        }
+        if (parsed) yield parsed;
       }
 
       if (done) {
         if (buffer.trim()) {
           const parsed = parseSseFrame(buffer);
-          if (parsed) {
-            yield parsed;
-          }
+          if (parsed) yield parsed;
         }
         break;
       }
@@ -42,65 +41,41 @@ export async function* parseAgentStream(
   }
 }
 
-export function parseSseFrame(frame: string): ParsedSseEvent | null {
-  const eventLines = frame.split(/\r?\n/);
-  const event = eventLines
-    .find((line) => line.startsWith("event:"))
-    ?.slice("event:".length)
-    .trim();
-  const data = eventLines
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n");
+export function parseSseFrame(frame: string): AgentEvent | null {
+  let type = "";
+  const dataLines: string[] = [];
 
-  if (!data) {
-    return null;
+  for (const line of frame.split(/\r?\n/)) {
+    if (line.startsWith("event:")) type = line.slice("event:".length).trim();
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trimStart());
+    }
   }
 
+  if (!type || dataLines.length === 0) return null;
+  if (!isEventType(type)) throw new UnknownEventError(type);
+
   return {
-    event,
-    data: JSON.parse(data) as StreamEventEnvelope,
+    type,
+    data: JSON.parse(dataLines.join("\n")) as StreamEventEnvelope,
+    at: Date.now(),
   };
 }
 
 export function parseWeatherPayload(value: unknown): WeatherPayload | undefined {
-  const parsed = parseJsonIfString(value);
+  const parsed = parseJsonIfString(messageText(value));
 
-  if (isRecord(parsed) && "content" in parsed) {
-    return parseWeatherPayload(parsed.content);
-  }
-
-  if (!isRecord(parsed)) {
-    return undefined;
-  }
+  if (!isRecord(parsed)) return undefined;
 
   return {
     city: typeof parsed.city === "string" ? parsed.city : undefined,
     temp_c: typeof parsed.temp_c === "number" ? parsed.temp_c : undefined,
-    condition:
-      typeof parsed.condition === "string" ? parsed.condition : undefined,
-    summary: typeof parsed.summary === "string" ? parsed.summary : undefined,
-  };
-}
-
-export function formatWeatherJson(value: unknown): WeatherPayload | undefined {
-  const payload = parseWeatherPayload(value);
-
-  if (!payload) {
-    return undefined;
-  }
-
-  return {
-    city: payload.city,
-    temp_c: payload.temp_c,
-    condition: payload.condition,
+    condition: typeof parsed.condition === "string" ? parsed.condition : undefined,
   };
 }
 
 export function parseJsonIfString(value: unknown): unknown {
-  if (typeof value !== "string") {
-    return value;
-  }
+  if (typeof value !== "string") return value;
 
   try {
     return JSON.parse(value);
@@ -109,68 +84,53 @@ export function parseJsonIfString(value: unknown): unknown {
   }
 }
 
-export function extractCity(value: unknown): string | undefined {
-  const parsed = parseJsonIfString(value);
-
-  if (isRecord(parsed) && typeof parsed.city === "string") {
-    return parsed.city;
-  }
-
-  return undefined;
+export function cityOf(input: unknown): string | undefined {
+  const parsed = parseJsonIfString(input);
+  if (!isRecord(parsed)) return undefined;
+  return typeof parsed.city === "string" ? parsed.city : undefined;
 }
 
-export function extractText(value: unknown): string {
-  if (typeof value === "string") {
-    return normalizeText(value);
-  }
+export function messageText(message: unknown): string {
+  const direct = contentText(message);
+  if (direct) return direct;
 
-  if (!isRecord(value)) {
-    return "";
+  const lcMessage = asMessage(message);
+  if (!lcMessage) return "";
+  if (lcMessage.kwargs && "content" in lcMessage.kwargs) {
+    return contentText(lcMessage.kwargs.content);
   }
-
-  if (typeof value.content === "string") {
-    return normalizeText(value.content);
-  }
-
-  if (Array.isArray(value.content)) {
-    return value.content
-      .map((item) => {
-        if (typeof item === "string") {
-          return normalizeText(item);
-        }
-        if (isRecord(item) && typeof item.text === "string") {
-          return normalizeText(item.text);
-        }
-        return "";
-      })
-      .join("");
-  }
-
-  return "";
+  return contentText(lcMessage.content);
 }
 
-export function isWeatherJsonFragment(value: string): boolean {
-  const trimmedValue = value.trimStart();
+export function messageToolCalls(message: unknown): ToolCall[] {
+  const calls = asMessage(message)?.kwargs?.tool_calls;
+  return Array.isArray(calls) ? calls : [];
+}
 
-  return (
-    trimmedValue.startsWith("{") ||
-    trimmedValue.includes('"city"') ||
-    trimmedValue.includes('"temp_c"') ||
-    trimmedValue.includes('"condition"') ||
-    trimmedValue.includes('"summary"')
-  );
+export function formatJson(value: unknown): string {
+  const parsed = parseJsonIfString(messageText(value));
+  if (typeof parsed === "string") return parsed;
+  return JSON.stringify(parsed, null, 2);
+}
+
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((block) => {
+      if (typeof block === "string") return block;
+      if (isRecord(block) && typeof block.text === "string") return block.text;
+      return "";
+    })
+    .join("");
+}
+
+function asMessage(value: unknown): LcMessage | undefined {
+  if (!isRecord(value)) return undefined;
+  return value as LcMessage;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function normalizeText(value: string): string {
-  const parsed = parseJsonIfString(value);
-
-  if (isRecord(parsed) && typeof parsed.summary === "string") {
-    return parsed.summary;
-  }
-
-  return value;
 }
