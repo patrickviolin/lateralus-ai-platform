@@ -1,11 +1,12 @@
 from typing import Literal
 
-from app.ai.model import Model
 from langchain_core.messages import AIMessage
 from langgraph.constants import END, START
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
+
+from app.ai.model import Model
 
 
 def route(state: MessagesState) -> Literal["tools", "__end__"]:
@@ -18,7 +19,7 @@ def route(state: MessagesState) -> Literal["tools", "__end__"]:
 class Graph:
     def __init__(self, model: Model):
         self.model = model
-        self.graph = None
+        self.application_graph = None
 
     def create_graph_agent(self):
         graph = (
@@ -34,6 +35,6 @@ class Graph:
         return graph
 
     def get_graph(self) -> CompiledStateGraph:
-        if self.graph is None:
-            self.graph = self.create_graph_agent()
-        return self.graph
+        if self.application_graph is None:
+            self.application_graph = self.create_graph_agent()
+        return self.application_graph
