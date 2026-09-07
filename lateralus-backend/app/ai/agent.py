@@ -1,10 +1,8 @@
-from typing import Any, AsyncGenerator, AsyncIterable
+from collections.abc import AsyncIterable
 
-from fastapi.sse import ServerSentEvent
-
-from app.ai.events import format_event_to_sse
 from app.ai.graph import Graph
 from app.ai.model import Model
+from app.ai.streaming.dispatcher import StreamDispatcher
 from app.ai.tools.weather import get_weather
 
 
@@ -12,12 +10,13 @@ class Agent:
     def __init__(self):
         self.tools = [get_weather]
         self.model = Model(self.tools)
-        self.graph = Graph(self.model).get_graph()
+        self.graph = Graph(self.model)
+        self._dispatcher = StreamDispatcher.default()
 
-    async def use_agent(self, query: str) -> AsyncIterable[str]:
-        async for ev in self.graph.astream_events(
-                {"messages": [{"role": "user", "content": query}]},
-                version="v2",
-                include_types=["chat_model", "tool"],
+    async def execute(self, query: str) -> AsyncIterable[str]:
+        async for event in self.graph.astream_events(
+            query,
+            version="v2",
+            include_types=self._dispatcher.include_types,
         ):
-            yield format_event_to_sse(ev)
+            yield self._dispatcher.dispatch(event)
