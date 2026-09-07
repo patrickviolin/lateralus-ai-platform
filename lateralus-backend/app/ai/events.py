@@ -10,7 +10,7 @@ def format_event_to_sse(event: StreamEvent) -> str:
     event_type = event["event"]
     data = json.dumps(event, default=model_dump_if_base_model)
 
-    return f"{event_type}\ndata: {data}\n\n"
+    return f"events: {event_type}\ndata: {data}\n\n"
 
 
 def model_dump_if_base_model(content):
