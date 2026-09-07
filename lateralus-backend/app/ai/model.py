@@ -3,8 +3,6 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState
 
-from app.ai.tools.schemas import GetWeatherResponse
-
 
 class Model:
     def __init__(self, tools: list):
