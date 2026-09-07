@@ -5,3 +5,4 @@ class GetWeatherResponse(BaseModel):
     city: str
     temp_c: int
     condition: str
+    summary: str
