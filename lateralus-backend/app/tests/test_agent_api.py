@@ -8,7 +8,7 @@ class FakeAgent:
     def __init__(self):
         self.received_messages = []
 
-    async def use_agent(self, message: str):
+    async def execute(self, message: str):
         self.received_messages.append(message)
         yield 'event: on_chat_model_end\ndata: {"content": "ok"}\n\n'
 
@@ -22,5 +22,6 @@ def test_execute_streams_agent_events(monkeypatch):
 
     assert response.status_code == 200
     assert fake_agent.received_messages == ["Weather in Recife"]
+    assert "text/event-stream" in response.headers["content-type"]
     assert 'event: on_chat_model_end' in response.text
     assert 'data: {"content": "ok"}' in response.text

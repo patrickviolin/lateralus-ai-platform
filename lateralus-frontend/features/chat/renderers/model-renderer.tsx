@@ -1,15 +1,21 @@
+import type { TextBlock } from "../blocks";
+
 type ModelRendererProps = {
-  content: string;
+  block: TextBlock;
 };
 
-export function ModelRenderer({ content }: ModelRendererProps) {
-  if (!content.trim()) {
-    return null;
-  }
+export function ModelRenderer({ block }: ModelRendererProps) {
+  if (!block.text.trim()) return null;
 
   return (
-    <div className="ml-8 w-[min(100%,760px)] text-lg leading-8 text-slate-200">
-      {content}
+    <div className="w-[min(100%,720px)] whitespace-pre-wrap text-base leading-8 text-slate-200">
+      {block.text}
+      {block.streaming ? (
+        <span
+          className="ml-1 inline-block h-5 w-0.5 translate-y-1 bg-cyan-300"
+          aria-hidden
+        />
+      ) : null}
     </div>
   );
 }

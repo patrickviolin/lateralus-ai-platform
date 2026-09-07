@@ -19,9 +19,9 @@ def route(state: MessagesState) -> Literal["tools", "__end__"]:
 class Graph:
     def __init__(self, model: Model):
         self.model = model
-        self.application_graph = None
+        self.application_graph = self.create_graph_agent()
 
-    def create_graph_agent(self):
+    def create_graph_agent(self) -> CompiledStateGraph:
         graph = (
             StateGraph(MessagesState)
             .add_node("model", self.model.call_model)
@@ -34,7 +34,9 @@ class Graph:
 
         return graph
 
-    def get_graph(self) -> CompiledStateGraph:
-        if self.application_graph is None:
-            self.application_graph = self.create_graph_agent()
-        return self.application_graph
+    def astream_events(self, message: str, *, version: str = "v2", include_types=None):
+        return self.application_graph.astream_events(
+            {"messages": [{"role": "user", "content": message}]},
+            version=version,
+            include_types=include_types,
+        )
