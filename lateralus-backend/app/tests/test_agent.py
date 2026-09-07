@@ -1,6 +1,7 @@
 import asyncio
 
 from app.ai.agent import Agent
+from app.ai.streaming.dispatcher import StreamDispatcher
 
 
 class FakeGraph:
@@ -20,19 +21,18 @@ class FakeGraph:
         }
 
 
-def test_use_agent_streams_formatted_graph_events():
+def test_execute_streams_formatted_graph_events():
     fake_graph = FakeGraph()
     agent = Agent.__new__(Agent)
     agent.graph = fake_graph
+    agent._dispatcher = StreamDispatcher.default()
 
     async def collect_events():
-        return [event async for event in agent.use_agent("Weather in Recife")]
+        return [event async for event in agent.execute("Weather in Recife")]
 
     events = asyncio.run(collect_events())
 
-    assert fake_graph.received_input == {
-        "messages": [{"role": "user", "content": "Weather in Recife"}]
-    }
+    assert fake_graph.received_input == "Weather in Recife"
     assert fake_graph.received_version == "v2"
     assert fake_graph.received_include_types == ["chat_model", "tool"]
     assert events == [
