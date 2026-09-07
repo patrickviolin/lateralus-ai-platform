@@ -1,6 +1,5 @@
 import json
 
-from fastapi.sse import ServerSentEvent
 from langchain_core.runnables.schema import StreamEvent
 from pydantic import BaseModel
 
@@ -10,7 +9,7 @@ def format_event_to_sse(event: StreamEvent) -> str:
     event_type = event["event"]
     data = json.dumps(event, default=model_dump_if_base_model)
 
-    return f"events: {event_type}\ndata: {data}\n\n"
+    return f"event: {event_type}\ndata: {data}\n\n"
 
 
 def model_dump_if_base_model(content):
