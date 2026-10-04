@@ -1,6 +1,6 @@
 import json
 
-from app.ai.tools import weather as weather_module
+from app.ai.agent.tools import weather as weather_module
 
 
 def test_get_weather_returns_serialized_weather(monkeypatch):

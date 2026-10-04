@@ -4,7 +4,7 @@ import pytest
 
 from app.ai.sse_event import SseEvent
 from app.ai.streaming.dispatcher import StreamDispatcher, UnknownStreamType
-from app.ai.tools.schemas import GetWeatherResponse
+from app.ai.agent.tools.schemas import GetWeatherResponse
 
 
 def test_sse_event_serializes_langchain_event():
@@ -33,7 +33,7 @@ def test_sse_event_serializes_langchain_event():
     output = serialized_event["data"]["output"]
     assert output["lc"] == 1
     assert output["type"] == "not_implemented"
-    assert output["id"] == ["app", "ai", "tools", "schemas", "GetWeatherResponse"]
+    assert output["id"] == ["app", "ai", "agent", "tools", "schemas", "GetWeatherResponse"]
     assert "Rio de Janeiro" in output["repr"]
 
 
