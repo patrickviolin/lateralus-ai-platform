@@ -22,8 +22,9 @@ async def create_redis_resources(settings: Settings) -> RedisResources:
 
     from langgraph.checkpoint.redis.aio import AsyncRedisSaver
 
-    context = AsyncRedisSaver.from_conn_string(settings.redis_url)
+    context = AsyncRedisSaver.from_conn_string(settings.redis_url, ttl={"default_ttl": settings.redis_ttl_minutes})
     checkpointer = await context.__aenter__()
+
     return RedisResources(
         url=settings.redis_url,
         checkpointer=checkpointer,

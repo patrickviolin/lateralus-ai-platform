@@ -6,7 +6,6 @@ from langchain_core.tools import BaseTool
 
 from app.ai.agent.tools.weather import get_weather
 
-
 ToolBuilder = Callable[[], BaseTool]
 
 

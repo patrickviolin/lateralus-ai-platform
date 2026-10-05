@@ -21,6 +21,7 @@ class Settings:
     openai_max_retries: int = 0
     redis_url: str = "redis://localhost:6379"
     redis_checkpoint_enabled: bool = True
+    redis_ttl_minutes: int = 10
     postgres_dsn: str = "postgresql://root:root@localhost:5432/lateralus_db"
     postgres_pool_enabled: bool = True
 
@@ -40,6 +41,7 @@ def get_settings() -> Settings:
         openai_max_retries=int(os.getenv("OPENAI_MAX_RETRIES", Settings.openai_max_retries)),
         redis_url=os.getenv("REDIS_URL", Settings.redis_url),
         redis_checkpoint_enabled=_env_bool("REDIS_CHECKPOINT_ENABLED"),
+        redis_ttl_minutes=int(os.getenv("REDIS_TTL_MINUTES", Settings.redis_ttl_minutes)),
         postgres_dsn=os.getenv("POSTGRES_URL", Settings.postgres_dsn),
         postgres_pool_enabled=_env_bool("POSTGRES_POOL_ENABLED"),
     )

@@ -27,7 +27,8 @@ class Graph:
         if self.checkpointer is not None:
             compile_options["checkpointer"] = self.checkpointer
 
-        graph = (StateGraph(MessagesState).add_node("model", self.model.call_model)
+        graph = (StateGraph(MessagesState)
+                 .add_node("model", self.model.call_model)
                  .add_node("tools", ToolNode(self.model.tools))
                  .add_edge(START, "model")
                  .add_conditional_edges("model", route)
@@ -36,9 +37,9 @@ class Graph:
 
         return graph
 
-    def astream_events(self, message: str, *, version: str = "v2", include_types=None, thread_id: str | None = None, ):
+    def astream_events(self, message: str, *, version: str = "v2", include_types=None, thread_id: str | None = None):
         options = {"version": version, "include_types": include_types, }
         if thread_id is not None:
             options["config"] = {"configurable": {"thread_id": thread_id}}
 
-        return self.application_graph.astream_events({"messages": [{"role": "user", "content": message}]}, **options, )
+        return self.application_graph.astream_events({"messages": [{"role": "user", "content": message}]}, **options)

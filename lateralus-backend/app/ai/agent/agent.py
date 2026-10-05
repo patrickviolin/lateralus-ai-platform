@@ -7,11 +7,7 @@ from app.ai.streaming.dispatcher import StreamDispatcher
 
 
 class Agent:
-    def __init__(
-        self,
-        graph: Graph | None = None,
-        dispatcher: StreamDispatcher | None = None,
-    ) -> None:
+    def __init__(self, graph: Graph | None = None, dispatcher: StreamDispatcher | None = None, ) -> None:
         if graph is None:
             tools = default_tool_factory().create_tools()
             model = Model(tools)
@@ -21,10 +17,7 @@ class Agent:
         self._dispatcher = dispatcher or StreamDispatcher.default()
 
     async def execute(self, query: str, *, thread_id: str | None = None) -> AsyncIterable[str]:
-        options = {
-            "version": "v2",
-            "include_types": self._dispatcher.include_types,
-        }
+        options = {"version": "v2", "include_types": self._dispatcher.include_types}
         if thread_id is not None:
             options["thread_id"] = thread_id
 
