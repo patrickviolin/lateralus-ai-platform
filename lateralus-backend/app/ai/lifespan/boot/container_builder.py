@@ -1,11 +1,12 @@
 from app.ai.agent import Agent
 from app.ai.agent.tools.factory import default_tool_factory
 from app.ai.application import ApplicationContainer
-from app.ai.graph import Graph
+from app.ai.agent.graph import Graph
 from app.ai.infra.http_initializer import create_http_client
-from app.ai.infra.postgres_initializer import create_postgres_resources
+from app.ai.infra.postgres.postgres_initializer import create_postgres_resources
+from app.ai.infra.postgres.summary_repository import PostgresSummaryReader
 from app.ai.infra.redis_initializer import create_redis_resources
-from app.ai.model import Model
+from app.ai.agent.model import Model
 from app.ai.runtime.runner import Runner
 from app.ai.streaming.dispatcher import StreamDispatcher
 from app.config import get_settings
@@ -24,7 +25,13 @@ async def build_container() -> ApplicationContainer:
         timeout=settings.openai_timeout,
         max_retries=settings.openai_max_retries,
     )
-    graph = Graph(model, checkpointer=redis.checkpointer)
+    summary_reader = PostgresSummaryReader(postgres.pool) if postgres.pool is not None else None
+    graph = Graph(
+        model,
+        checkpointer=redis.checkpointer,
+        summary_reader=summary_reader,
+        context_window_size=settings.context_window_size,
+    )
     agent = Agent(graph=graph, dispatcher=StreamDispatcher.default())
     runner = Runner(agent=agent)
 

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
+def _env_bool(name: str, default: bool = True) -> bool:
     value = os.getenv(name)
     if value is None:
         return default
@@ -24,6 +24,7 @@ class Settings:
     redis_ttl_minutes: int = 10
     postgres_dsn: str = "postgresql://root:root@localhost:5432/lateralus_db"
     postgres_pool_enabled: bool = True
+    context_window_size: int = 10
 
 
 def get_settings() -> Settings:
@@ -44,4 +45,5 @@ def get_settings() -> Settings:
         redis_ttl_minutes=int(os.getenv("REDIS_TTL_MINUTES", Settings.redis_ttl_minutes)),
         postgres_dsn=os.getenv("POSTGRES_URL", Settings.postgres_dsn),
         postgres_pool_enabled=_env_bool("POSTGRES_POOL_ENABLED"),
+        context_window_size=int(os.getenv("CONTEXT_WINDOW_SIZE", Settings.context_window_size))
     )
