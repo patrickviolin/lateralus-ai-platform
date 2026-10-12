@@ -1,11 +1,11 @@
-export async function executeAgent(message: string, signal?: AbortSignal) {
+export async function executeAgent(message: string, threadId: string, signal?: AbortSignal) {
   const response = await fetch("/api/agent/execute", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, thread_id: threadId }),
     signal,
   });
 

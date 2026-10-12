@@ -14,10 +14,12 @@ function uid() {
 export function useChat() {
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
   const activeController = useRef<AbortController | null>(null);
+  const threadId = useRef<string | null>(null);
 
   const newChat = useCallback(() => {
     activeController.current?.abort();
     activeController.current = null;
+    threadId.current = null;
     dispatch({ type: "reset" });
   }, []);
 
@@ -28,6 +30,8 @@ export function useChat() {
     activeController.current?.abort();
     const controller = new AbortController();
     activeController.current = controller;
+    threadId.current ??= uid();
+    const currentThreadId = threadId.current;
 
     const user: ChatTurn = {
       id: uid(),
@@ -45,9 +49,10 @@ export function useChat() {
     dispatch({ type: "turn-start", user, assistant });
 
     try {
-      const body = await executeAgent(trimmedMessage, controller.signal);
+      const body = await executeAgent(trimmedMessage, currentThreadId, controller.signal);
 
       for await (const event of parseAgentStream(body)) {
+        if (activeController.current !== controller) break;
         dispatch({
           type: "agent-event",
           assistantId: assistant.id,
@@ -55,7 +60,7 @@ export function useChat() {
         });
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && activeController.current === controller) {
         dispatch({
           type: "error",
           message:
@@ -67,8 +72,8 @@ export function useChat() {
     } finally {
       if (activeController.current === controller) {
         activeController.current = null;
+        dispatch({ type: "loading", isLoading: false });
       }
-      dispatch({ type: "loading", isLoading: false });
     }
   }, []);
 
