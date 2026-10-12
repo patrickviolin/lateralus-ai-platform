@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from app.ai.infra.http_initializer import DefaultAsyncHttpClient
-from app.ai.infra.postgres_initializer import PostgresResources
+from app.ai.infra.postgres.postgres_initializer import PostgresResources
 from app.ai.infra.redis_initializer import RedisResources
 from app.ai.runtime.runner import Runner
 from app.config import Settings
