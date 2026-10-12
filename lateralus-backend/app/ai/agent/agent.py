@@ -1,8 +1,8 @@
 from collections.abc import AsyncIterable
 
 from app.ai.agent.tools.factory import default_tool_factory
-from app.ai.graph import Graph
-from app.ai.model import Model
+from app.ai.agent.graph import Graph
+from app.ai.agent.model import Model
 from app.ai.streaming.dispatcher import StreamDispatcher
 
 
@@ -23,4 +23,6 @@ class Agent:
 
         stream = self.graph.astream_events(query, **options)
         async for event in stream:
+            if "memory_summary" in event.get("tags", []):
+                continue
             yield self._dispatcher.dispatch(event)
