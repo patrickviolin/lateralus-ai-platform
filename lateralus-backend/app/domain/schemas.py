@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
+from sqlalchemy import Index
 
 
 # class SessionRegistry(BaseModel):
@@ -27,6 +28,10 @@ from sqlmodel import Field, SQLModel
 
 
 class MemorySummaries(SQLModel, table=True):
+    __tablename__ = "memory_summaries"
+    __table_args__ = (
+        Index("uq_memory_summaries_coverage", "thread_id", "covers_through_message_id", unique=True),
+    )
     thread_id: str = Field(primary_key=True)
     # organization_id: str = Field(...)
     revision: int = Field(primary_key=True)
