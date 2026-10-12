@@ -1,4 +1,4 @@
-from app.ai.sse_event import SseEvent
+from app.ai.agent.sse_event import SseEvent
 
 
 class StreamHandler:

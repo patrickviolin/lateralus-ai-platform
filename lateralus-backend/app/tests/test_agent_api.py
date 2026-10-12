@@ -32,3 +32,31 @@ def test_execute_streams_agent_events():
     assert "text/event-stream" in response.headers["content-type"]
     assert 'event: on_chat_model_end' in response.text
     assert 'data: {"content": "ok"}' in response.text
+
+
+def test_execute_passes_thread_id_to_runner():
+    fake_runner = FakeRunner()
+    app.state.container = FakeContainer(fake_runner)
+
+    client = TestClient(app)
+    response = client.post(
+        "/agent/execute",
+        json={"message": "And tomorrow?", "thread_id": "conversation-123"},
+    )
+
+    assert response.status_code == 200
+    assert fake_runner.received_thread_ids == ["conversation-123"]
+
+
+def test_execute_passes_thread_id_to_runner():
+    fake_runner = FakeRunner()
+    app.state.container = FakeContainer(fake_runner)
+
+    client = TestClient(app)
+    response = client.post(
+        "/agent/execute",
+        json={"message": "And tomorrow?", "thread_id": "conversation-123"},
+    )
+
+    assert response.status_code == 200
+    assert fake_runner.received_thread_ids == ["conversation-123"]
