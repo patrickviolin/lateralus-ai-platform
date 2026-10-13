@@ -17,11 +17,11 @@ class AgentState(MessagesState):
     summary_covers_through_message_id: str | None
 
 
-def route(state: AgentState) -> Literal["tools", "__end__"]:
+def route(state: AgentState) -> Literal["tools", "summarize"]:
     last = state["messages"][-1]
     if isinstance(last, AIMessage) and last.tool_calls:
         return "tools"
-    return END
+    return "summarize"
 
 
 class Graph:
@@ -38,7 +38,7 @@ class Graph:
         self.context_window_size = context_window_size
         self.application_graph = self.create_graph_agent()
 
-    async def load_summary(self, config: RunnableConfig) -> dict:
+    async def load_summary(self, state: AgentState, config: RunnableConfig) -> dict:
         if self.summary_repository is None:
             return {}
         thread_id = config.get("configurable", {}).get("thread_id")
@@ -53,29 +53,26 @@ class Graph:
     async def summarize(self, state: AgentState, config: RunnableConfig) -> dict:
         messages = state["messages"]
         covered_id = state.get("summary_covers_through_message_id")
-        covered_index = next(
-            (index for index, message in enumerate(messages) if message.id == covered_id),
-            -1,
-        ) if covered_id else -1
+        covered_index = next((index for index, message in enumerate(messages) if message.id == covered_id), -1) if covered_id else -1
+
         unsummarized_messages = messages[covered_index + 1:]
         if count_tokens_approximately(unsummarized_messages) <= self.context_window_size:
             return {}
 
-        # Keep the current message and the most recent completed turn in context.
-        past = messages[:-1] if messages and isinstance(messages[-1], HumanMessage) else messages
-        turn_starts = [index for index, message in enumerate(past) if isinstance(message, HumanMessage)]
-        if len(turn_starts) < 2:
+        # This node runs after the final assistant response, so every turn here is complete.
+        turn_starts = [index for index, message in enumerate(unsummarized_messages) if isinstance(message, HumanMessage)]
+        if not turn_starts:
             return {}
 
-        older_completed_turns = past[covered_index + 1:turn_starts[-1]]
-        if not older_completed_turns:
-            return {}
+        # Keep the newest completed turn when there is an older one to summarize.
+        # A single long turn must be summarized in full to meet the trigger.
+        to_summarize = (unsummarized_messages[:turn_starts[-1]] if len(turn_starts) > 1 else unsummarized_messages)
 
-        summary = await self.model.summarize(state.get("summary", ""), older_completed_turns)
+        summary = await self.model.summarize(state.get("summary", ""), to_summarize)
         if self.summary_repository is None:
             return {"summary": summary}
 
-        covered_message_id = older_completed_turns[-1].id
+        covered_message_id = to_summarize[-1].id
         if covered_message_id is None:
             raise ValueError("Cannot save a summary without a covered message ID")
         thread_id = config.get("configurable", {}).get("thread_id")
@@ -103,10 +100,10 @@ class Graph:
                  .add_node("model", self.model.call_model)
                  .add_node("tools", ToolNode(self.model.tools))
                  .add_edge(START, "load_summary")
-                 .add_edge("load_summary", "summarize")
-                 .add_edge("summarize", "model")
+                 .add_edge("load_summary", "model")
                  .add_conditional_edges("model", route)
                  .add_edge("tools", "model")
+                 .add_edge("summarize", END)
                  .compile(**compile_options))
 
         return graph

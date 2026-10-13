@@ -30,5 +30,9 @@ class Model:
         return response.content if isinstance(response.content, str) else str(response.content)
 
     async def call_model(self, state: dict) -> dict:
-        messages = [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
+        summary = state.get("summary", "")
+        system_prompt = SYSTEM_PROMPT
+        if summary:
+            system_prompt += f"\n\nSummary of earlier conversation (background context):\n{summary}"
+        messages = [SystemMessage(content=system_prompt), *state["messages"]]
         return {"messages": [await self.bound.ainvoke(messages)]}
