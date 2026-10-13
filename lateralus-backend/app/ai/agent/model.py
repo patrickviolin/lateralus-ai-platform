@@ -3,7 +3,6 @@ from langchain_openai import ChatOpenAI
 
 from app.ai.agent.prompts import SYSTEM_PROMPT
 
-
 SUMMARY_PROMPT = (
     "Summarize the completed conversation turns for future turns in this same chat. "
     "Preserve the user's constraints, preferences, unresolved questions, and important tool results. "
@@ -13,6 +12,7 @@ SUMMARY_PROMPT = (
 
 class Model:
     def __init__(self, tools: list, *, model: str = "gpt-4o-mini", timeout: float = 5.0, max_retries: int = 0):
+        self.model_name = model
         self.foundation_model = ChatOpenAI(model=model, timeout=timeout, max_retries=max_retries)
         self.tools = tools
         self.bound = self.foundation_model.bind_tools(tools)
@@ -31,4 +31,4 @@ class Model:
 
     async def call_model(self, state: dict) -> dict:
         messages = [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
-        return {"messages": [self.bound.ainvoke(messages)]}
+        return {"messages": [await self.bound.ainvoke(messages)]}
