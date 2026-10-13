@@ -30,6 +30,7 @@ lateralus-ai-platform/
 - `uv`
 - Node.js/npm
 - OpenAI API key
+- Docker Compose (for Redis and PostgreSQL)
 
 ## Environment
 
@@ -39,11 +40,16 @@ Create a `.env` file at the repository root:
 cp .env.example .env
 ```
 
-Then set:
+Then set your OpenAI key and adjust the local service URLs if needed:
 
 ```env
 OPENAI_API_KEY='your_openai_api_key_here'
 ```
+
+The root `.env` is ignored by Git. The example sets `REDIS_TTL_MINUTES=10` and
+`CONTEXT_WINDOW_SIZE=10`. The latter is a deliberately low token trigger for
+demonstrating summarization; increase it for normal use. The token count is an
+approximation of unsummarized messages, not a hard model input limit.
 
 The frontend proxies requests to the backend through `app/api/agent/execute`. By default it expects the backend at:
 
@@ -58,6 +64,26 @@ BACKEND_API_BASE_URL=http://localhost:8000
 ```
 
 ## Run Locally
+
+Start Redis and PostgreSQL from the repository root:
+
+```bash
+docker compose up -d
+```
+
+Apply the summary schema once, in order:
+
+```bash
+docker compose exec -T postgres-database psql -U root -d lateralus_db -f /dev/stdin < lateralus-backend/scripts/sql/001_memory_summaries.sql
+docker compose exec -T postgres-database psql -U root -d lateralus_db -f /dev/stdin < lateralus-backend/scripts/sql/002_memory_summaries_coverage_unique.sql
+```
+
+In PowerShell, run the same scripts with:
+
+```powershell
+Get-Content -Raw lateralus-backend/scripts/sql/001_memory_summaries.sql | docker compose exec -T postgres-database psql -U root -d lateralus_db
+Get-Content -Raw lateralus-backend/scripts/sql/002_memory_summaries_coverage_unique.sql | docker compose exec -T postgres-database psql -U root -d lateralus_db
+```
 
 Start the backend:
 
@@ -96,6 +122,27 @@ http://localhost:3000
    - filtered JSON output
    - streamed assistant response
 
+### Conversation memory
+
+The frontend sends the same `thread_id` for each turn of a chat. LangGraph
+checkpoints recent messages in Redis with a configurable TTL (10 minutes by
+default). After a completed turn exceeds `CONTEXT_WINDOW_SIZE`, the graph
+summarizes completed messages and saves a revision in PostgreSQL. Only after
+that save succeeds does it remove the covered messages from the checkpoint.
+The next turn loads the active summary into the model's system prompt and keeps
+any newer messages verbatim. A single long first turn is summarized in full;
+with multiple turns, the newest turn remains available verbatim. If a save
+commits before checkpoint pruning, the next turn finishes the removal before
+calling the model.
+
+To verify the flow, keep `CONTEXT_WINDOW_SIZE=10`, send a long message, then
+send a follow-up in the same chat. The `memory_summary` model call should
+appear after the first answer; the following model call should include the
+saved summary in its system prompt. To inspect these prompts in LangSmith,
+set `LANGSMITH_TRACING=true` and a real `LANGSMITH_API_KEY` in the root `.env`,
+then open the project named by `LANGSMITH_PROJECT` (default:
+`lateralus-memory`).
+
 ## Useful Commands
 
 Backend tests:
@@ -104,6 +151,12 @@ Backend tests:
 cd lateralus-backend
 uv run pytest app/tests
 ```
+
+With the local containers running and the schema applied, set
+`RUN_MEMORY_INTEGRATION=1` to include the Redis/PostgreSQL integration test.
+On Windows, psycopg needs a selector event loop; the integration test selects
+one explicitly. The `uvicorn --reload` command above also uses a selector loop
+on Windows.
 
 Backend smoke stream:
 

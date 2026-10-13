@@ -1,6 +1,7 @@
 import asyncio
 
-from langchain_core.messages import AIMessage, HumanMessage
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.ai.agent.graph import Graph, route
@@ -141,6 +142,7 @@ def test_long_first_turn_is_saved_and_loaded_for_next_turn():
     assert len(repository.saved) == 1
     assert repository.saved[0][0:2] == ("conversation-123", "Extended summary")
     assert state.values["summary"] == "Extended summary"
+    assert [message.content for message in state.values["messages"]] == ["What did I say?", "ok"]
 
 
 def test_completed_turn_summarization_reserves_newest_turn():
@@ -172,3 +174,91 @@ def test_completed_turn_summarization_reserves_newest_turn():
 
     assert model.received == ["First", "Answer one"]
     assert result == {"summary": "Summary of first turn"}
+
+
+def test_summarize_removes_complete_older_turn_after_save():
+    class FakeRepository:
+        async def save(self, *, thread_id, content, covers_through_message_id, model_name):
+            assert (thread_id, content, covers_through_message_id) == (
+                "conversation-123", "Saved summary", "a1"
+            )
+            return SummarySnapshot(content, covers_through_message_id, 1)
+
+    class FakeModel:
+        tools = []
+        model_name = "fake-model"
+
+        async def call_model(self, state):
+            return {"messages": [AIMessage(content="ok")]}
+
+        async def summarize(self, previous_summary, messages):
+            assert [message.id for message in messages] == ["h1", "call", "tool", "a1"]
+            return "Saved summary"
+
+    graph = Graph(FakeModel(), summary_repository=FakeRepository(), context_window_size=1)
+    state = {
+        "messages": [
+            HumanMessage(content="First", id="h1"),
+            AIMessage(content="", id="call", tool_calls=[{"name": "search", "args": {}, "id": "tool-call"}]),
+            ToolMessage(content="result", tool_call_id="tool-call", id="tool"),
+            AIMessage(content="Answer one", id="a1"),
+            HumanMessage(content="Second", id="h2"),
+            AIMessage(content="Answer two", id="a2"),
+        ],
+    }
+
+    result = asyncio.run(graph.summarize(state, {"configurable": {"thread_id": "conversation-123"}}))
+
+    assert [message.id for message in result["messages"]] == ["h1", "call", "tool", "a1"]
+    assert all(isinstance(message, RemoveMessage) for message in result["messages"])
+    assert result["summary_covers_through_message_id"] == "a1"
+
+
+def test_summarize_keeps_messages_when_save_fails():
+    class FailingRepository:
+        async def save(self, **kwargs):
+            raise RuntimeError("database unavailable")
+
+    class FakeModel:
+        tools = []
+        model_name = "fake-model"
+
+        async def call_model(self, state):
+            return {"messages": [AIMessage(content="ok")]}
+
+        async def summarize(self, previous_summary, messages):
+            return "Unsaved summary"
+
+    graph = Graph(FakeModel(), summary_repository=FailingRepository(), context_window_size=1)
+    messages = [HumanMessage(content="First", id="h1"), AIMessage(content="Answer", id="a1")]
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        asyncio.run(graph.summarize({"messages": messages}, {"configurable": {"thread_id": "conversation-123"}}))
+    assert [message.id for message in messages] == ["h1", "a1"]
+
+
+def test_load_summary_prunes_covered_messages_after_interrupted_checkpoint():
+    class FakeRepository:
+        async def latest_active(self, thread_id):
+            return SummarySnapshot("Saved summary", "a1", 1)
+
+    class FakeModel:
+        tools = []
+
+        async def call_model(self, state):
+            return {"messages": [AIMessage(content="ok")]}
+
+    graph = Graph(FakeModel(), summary_repository=FakeRepository())
+    state = {
+        "messages": [
+            HumanMessage(content="First", id="h1"),
+            AIMessage(content="Answer one", id="a1"),
+            HumanMessage(content="Second", id="h2"),
+        ],
+    }
+
+    result = asyncio.run(graph.load_summary(state, {"configurable": {"thread_id": "conversation-123"}}))
+
+    assert result["summary"] == "Saved summary"
+    assert [message.id for message in result["messages"]] == ["h1", "a1"]
+    assert all(isinstance(message, RemoveMessage) for message in result["messages"])

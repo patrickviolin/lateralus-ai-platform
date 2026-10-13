@@ -1,6 +1,6 @@
 from typing import Literal
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import END, START
@@ -45,10 +45,24 @@ class Graph:
         if thread_id is None:
             return {}
         summary = await self.summary_repository.latest_active(str(thread_id))
-        return {
+        result = {
             "summary": summary.content if summary else "",
             "summary_covers_through_message_id": summary.covers_through_message_id if summary else None,
         }
+        if summary is not None:
+            # A save can commit before LangGraph checkpoints the removals. Finish that
+            # pruning on the next turn, before the model sees the covered messages.
+            covered_index = next(
+                (index for index, message in enumerate(state["messages"])
+                 if message.id == summary.covers_through_message_id),
+                -1,
+            )
+            if covered_index >= 0:
+                result["messages"] = [
+                    RemoveMessage(id=message.id)
+                    for message in state["messages"][:covered_index + 1]
+                ]
+        return result
 
     async def summarize(self, state: AgentState, config: RunnableConfig) -> dict:
         messages = state["messages"]
@@ -72,9 +86,9 @@ class Graph:
         if self.summary_repository is None:
             return {"summary": summary}
 
+        if any(message.id is None for message in to_summarize):
+            raise ValueError("Cannot save a summary when a covered message has no ID")
         covered_message_id = to_summarize[-1].id
-        if covered_message_id is None:
-            raise ValueError("Cannot save a summary without a covered message ID")
         thread_id = config.get("configurable", {}).get("thread_id")
         if thread_id is None:
             raise ValueError("Cannot save a summary without a thread ID")
@@ -87,6 +101,7 @@ class Graph:
         return {
             "summary": snapshot.content,
             "summary_covers_through_message_id": snapshot.covers_through_message_id,
+            "messages": [RemoveMessage(id=message.id) for message in to_summarize],
         }
 
     def create_graph_agent(self) -> CompiledStateGraph:
