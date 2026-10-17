@@ -26,11 +26,11 @@ def route(state: AgentState) -> Literal["tools", "summarize"]:
 
 class Graph:
     def __init__(
-        self,
-        model: Model,
-        checkpointer=None,
-        summary_repository: SummaryRepository | None = None,
-        context_window_size: int = 10,
+            self,
+            model: Model,
+            checkpointer=None,
+            summary_repository: SummaryRepository | None = None,
+            context_window_size: int = 10,
     ):
         self.model = model
         self.checkpointer = checkpointer
@@ -41,9 +41,11 @@ class Graph:
     async def load_summary(self, state: AgentState, config: RunnableConfig) -> dict:
         if self.summary_repository is None:
             return {}
+
         thread_id = config.get("configurable", {}).get("thread_id")
         if thread_id is None:
             return {}
+
         summary = await self.summary_repository.latest_active(str(thread_id))
         result = {
             "summary": summary.content if summary else "",
@@ -53,9 +55,7 @@ class Graph:
             # A save can commit before LangGraph checkpoints the removals. Finish that
             # pruning on the next turn, before the model sees the covered messages.
             covered_index = next(
-                (index for index, message in enumerate(state["messages"])
-                 if message.id == summary.covers_through_message_id),
-                -1,
+                (index for index, message in enumerate(state["messages"]) if message.id == summary.covers_through_message_id), -1,
             )
             if covered_index >= 0:
                 result["messages"] = [
@@ -67,14 +67,16 @@ class Graph:
     async def summarize(self, state: AgentState, config: RunnableConfig) -> dict:
         messages = state["messages"]
         covered_id = state.get("summary_covers_through_message_id")
-        covered_index = next((index for index, message in enumerate(messages) if message.id == covered_id), -1) if covered_id else -1
+        covered_index = next((index for index, message in enumerate(messages) if message.id == covered_id),
+                             -1) if covered_id else -1
 
         unsummarized_messages = messages[covered_index + 1:]
         if count_tokens_approximately(unsummarized_messages) <= self.context_window_size:
             return {}
 
         # This node runs after the final assistant response, so every turn here is complete.
-        turn_starts = [index for index, message in enumerate(unsummarized_messages) if isinstance(message, HumanMessage)]
+        turn_starts = [index for index, message in enumerate(unsummarized_messages) if
+                       isinstance(message, HumanMessage)]
         if not turn_starts:
             return {}
 
@@ -89,15 +91,18 @@ class Graph:
         if any(message.id is None for message in to_summarize):
             raise ValueError("Cannot save a summary when a covered message has no ID")
         covered_message_id = to_summarize[-1].id
+
         thread_id = config.get("configurable", {}).get("thread_id")
         if thread_id is None:
             raise ValueError("Cannot save a summary without a thread ID")
+
         snapshot = await self.summary_repository.save(
             thread_id=str(thread_id),
             content=summary,
             covers_through_message_id=covered_message_id,
             model_name=self.model.model_name,
         )
+
         return {
             "summary": snapshot.content,
             "summary_covers_through_message_id": snapshot.covers_through_message_id,
