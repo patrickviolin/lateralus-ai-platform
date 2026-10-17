@@ -124,6 +124,12 @@ http://localhost:3000
 
 ### Conversation memory
 
+The frontend lists conversations in a sidebar and keeps each conversation's
+messages and `thread_id` in browser memory while the page is open. Selecting a
+conversation resumes that thread. This first version does not persist the list
+across page reloads; the conversation records are kept together in the chat
+state so a future API can load and save them.
+
 The frontend sends the same `thread_id` for each turn of a chat. LangGraph
 checkpoints recent messages in Redis with a configurable TTL (10 minutes by
 default). After a completed turn exceeds `CONTEXT_WINDOW_SIZE`, the graph
