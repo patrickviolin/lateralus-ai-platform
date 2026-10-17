@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+
 import { ChatInput } from "./chat-input";
+import { ConversationHistory } from "./conversation-history";
 import { MessageList } from "./message-list";
 import { NewChatButton } from "./new-chat-button";
 import { useChat } from "../use-chat";
@@ -12,29 +15,51 @@ const prompts = [
 ];
 
 export function Chat() {
-  const { turns, isLoading, error, sendMessage, newChat } = useChat();
+  const {
+    conversations, activeConversationId, turns, isLoading, error,
+    sendMessage, newChat, selectConversation,
+  } = useChat();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const hasConversation = turns.length > 0;
 
   return (
-    <main className="flex min-h-screen flex-col bg-[#07090f] text-slate-100">
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0f16]/90 px-5 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <span className="size-2.5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.65)]" />
-          <span className="font-serif text-2xl tracking-wide text-slate-100">
-            lateralus
-          </span>
-        </div>
-        <NewChatButton onClick={newChat} />
-      </header>
+    <div className="flex min-h-screen bg-[#07090f] text-slate-100">
+      <ConversationHistory
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onSelect={selectConversation}
+        onNewChat={newChat}
+        onClose={() => setHistoryOpen(false)}
+        open={historyOpen}
+      />
+      <main className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0f16]/90 px-5 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              aria-label="Abrir histórico"
+              className="rounded-md px-2 py-1 text-slate-300 hover:bg-white/10 md:hidden"
+            >
+              ☰
+            </button>
+            <span className="size-2.5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.65)]" />
+            <span className="font-serif text-2xl tracking-wide text-slate-100">
+              lateralus
+            </span>
+          </div>
+          <NewChatButton onClick={newChat} />
+        </header>
 
-      {hasConversation ? (
-        <MessageList turns={turns} isLoading={isLoading} error={error} />
-      ) : (
-        <EmptyState onPrompt={sendMessage} />
-      )}
+        {hasConversation ? (
+          <MessageList turns={turns} isLoading={isLoading} error={error} />
+        ) : (
+          <EmptyState onPrompt={sendMessage} />
+        )}
 
-      <ChatInput disabled={isLoading} onSubmit={sendMessage} />
-    </main>
+        <ChatInput disabled={isLoading} onSubmit={sendMessage} />
+      </main>
+    </div>
   );
 }
 

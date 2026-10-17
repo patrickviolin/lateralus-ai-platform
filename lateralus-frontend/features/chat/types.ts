@@ -59,12 +59,22 @@ export type ChatTurn = {
   events: AgentEvent[];
 };
 
+export type Conversation = {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  turns: ChatTurn[];
+  isLoading: boolean;
+  error?: string;
+};
+
 export type ChatEvent =
-  | { type: "reset" }
-  | { type: "loading"; isLoading: boolean }
-  | { type: "turn-start"; user: ChatTurn; assistant: ChatTurn }
-  | { type: "agent-event"; assistantId: string; event: AgentEvent }
-  | { type: "error"; message: string };
+  | { type: "select"; conversationId: string | null }
+  | { type: "loading"; conversationId: string; isLoading: boolean }
+  | { type: "turn-start"; conversationId: string; user: ChatTurn; assistant: ChatTurn; at: number }
+  | { type: "agent-event"; conversationId: string; assistantId: string; event: AgentEvent }
+  | { type: "error"; conversationId: string; message: string };
 
 export class UnknownEventError extends Error {
   constructor(type: string) {

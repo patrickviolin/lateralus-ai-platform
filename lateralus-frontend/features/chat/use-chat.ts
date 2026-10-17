@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { executeAgent } from "./api";
 import { chatReducer, initialChatState } from "./reducer";
@@ -13,25 +13,37 @@ function uid() {
 
 export function useChat() {
   const [state, dispatch] = useReducer(chatReducer, initialChatState);
-  const activeController = useRef<AbortController | null>(null);
-  const threadId = useRef<string | null>(null);
+  const controllers = useRef(new Map<string, AbortController>());
+  const activeConversationId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const pending = controllers.current;
+    return () => {
+      for (const controller of pending.values()) controller.abort();
+      pending.clear();
+    };
+  }, []);
 
   const newChat = useCallback(() => {
-    activeController.current?.abort();
-    activeController.current = null;
-    threadId.current = null;
-    dispatch({ type: "reset" });
+    activeConversationId.current = null;
+    dispatch({ type: "select", conversationId: null });
+  }, []);
+
+  const selectConversation = useCallback((conversationId: string) => {
+    if (conversationId === activeConversationId.current) return;
+    activeConversationId.current = conversationId;
+    dispatch({ type: "select", conversationId });
   }, []);
 
   const sendMessage = useCallback(async (message: string) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
-    activeController.current?.abort();
+    const conversationId = activeConversationId.current ?? uid();
+    if (controllers.current.has(conversationId)) return;
     const controller = new AbortController();
-    activeController.current = controller;
-    threadId.current ??= uid();
-    const currentThreadId = threadId.current;
+    controllers.current.set(conversationId, controller);
+    activeConversationId.current = conversationId;
 
     const user: ChatTurn = {
       id: uid(),
@@ -46,23 +58,20 @@ export function useChat() {
       events: [],
     };
 
-    dispatch({ type: "turn-start", user, assistant });
+    dispatch({ type: "turn-start", conversationId, user, assistant, at: Date.now() });
 
     try {
-      const body = await executeAgent(trimmedMessage, currentThreadId, controller.signal);
+      const body = await executeAgent(trimmedMessage, conversationId, controller.signal);
 
       for await (const event of parseAgentStream(body)) {
-        if (activeController.current !== controller) break;
-        dispatch({
-          type: "agent-event",
-          assistantId: assistant.id,
-          event,
-        });
+        if (controllers.current.get(conversationId) !== controller) break;
+        dispatch({ type: "agent-event", conversationId, assistantId: assistant.id, event });
       }
     } catch (error) {
-      if (!controller.signal.aborted && activeController.current === controller) {
+      if (!controller.signal.aborted && controllers.current.get(conversationId) === controller) {
         dispatch({
           type: "error",
+          conversationId,
           message:
             error instanceof Error
               ? error.message
@@ -70,16 +79,23 @@ export function useChat() {
         });
       }
     } finally {
-      if (activeController.current === controller) {
-        activeController.current = null;
-        dispatch({ type: "loading", isLoading: false });
+      if (controllers.current.get(conversationId) === controller) {
+        controllers.current.delete(conversationId);
+        dispatch({ type: "loading", conversationId, isLoading: false });
       }
     }
   }, []);
 
+  const activeConversation = state.conversations.find((chat) => chat.id === state.activeConversationId);
+
   return {
-    ...state,
+    conversations: state.conversations,
+    activeConversationId: state.activeConversationId,
+    turns: activeConversation?.turns ?? [],
+    isLoading: activeConversation?.isLoading ?? false,
+    error: activeConversation?.error,
     sendMessage,
     newChat,
+    selectConversation,
   };
 }

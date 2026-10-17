@@ -31,7 +31,7 @@ export function ChatInput({ disabled, onSubmit }: ChatInputProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="fixed inset-x-0 bottom-5 z-20 mx-auto w-[min(92vw,960px)] px-4"
+      className="fixed inset-x-0 bottom-5 z-20 mx-auto w-[min(92vw,960px)] px-4 md:left-72 md:w-auto md:max-w-[960px]"
     >
       <div className="group flex min-h-16 items-center gap-3 rounded-[2rem] border border-sky-100/20 bg-[#151521]/90 px-6 py-3 shadow-[0_0_40px_rgba(56,189,248,0.13)] backdrop-blur-xl transition focus-within:border-sky-200/50 focus-within:shadow-[0_0_55px_rgba(56,189,248,0.22)]">
         <textarea
