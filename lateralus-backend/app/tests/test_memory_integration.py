@@ -1,6 +1,8 @@
 import asyncio
 import os
 import sys
+from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -15,7 +17,58 @@ from app.config import Settings
 from app.domain.schemas import MemorySummaries
 
 
-@pytest.mark.skipif(os.getenv("RUN_MEMORY_INTEGRATION") != "1", reason="Requires local Redis and PostgreSQL")
+TEST_POSTGRES_URL = "postgresql://root:root@localhost:55432/lateralus_test_db"
+TEST_REDIS_URL = "redis://localhost:56379"
+MIGRATIONS = (
+    "001_memory_summaries.sql",
+    "002_memory_summaries_coverage_unique.sql",
+)
+
+
+def integration_settings() -> Settings:
+    postgres_url = os.getenv("TEST_POSTGRES_URL", TEST_POSTGRES_URL)
+    redis_url = os.getenv("TEST_REDIS_URL", TEST_REDIS_URL)
+    app_postgres_url = os.getenv("POSTGRES_URL", Settings.postgres_dsn)
+    app_redis_url = os.getenv("REDIS_URL", Settings.redis_url)
+
+    test_postgres = urlsplit(postgres_url)
+    app_postgres = urlsplit(app_postgres_url)
+    if test_postgres.path != "/lateralus_test_db":
+        raise ValueError("Integration tests require the lateralus_test_db database")
+    if (test_postgres.hostname, test_postgres.port, test_postgres.path) == (
+        app_postgres.hostname, app_postgres.port, app_postgres.path
+    ):
+        raise ValueError("Integration tests cannot use the application PostgreSQL database")
+
+    test_redis = urlsplit(redis_url)
+    app_redis = urlsplit(app_redis_url)
+    if (test_redis.hostname, test_redis.port, test_redis.path or "/0") == (
+        app_redis.hostname, app_redis.port, app_redis.path or "/0"
+    ):
+        raise ValueError("Integration tests cannot use the application Redis database")
+
+    return Settings(openai_api_key="unused", postgres_dsn=postgres_url, redis_url=redis_url)
+
+
+async def apply_test_migrations(postgres) -> None:
+    scripts = Path(__file__).resolve().parents[2] / "scripts" / "sql"
+    async with postgres.engine.begin() as connection:
+        for filename in MIGRATIONS:
+            await connection.exec_driver_sql((scripts / filename).read_text(encoding="utf-8"))
+
+
+def test_integration_settings_reject_application_databases(monkeypatch):
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://root:root@localhost:55432/lateralus_test_db")
+    with pytest.raises(ValueError, match="application PostgreSQL"):
+        integration_settings()
+
+    monkeypatch.setenv("POSTGRES_URL", Settings.postgres_dsn)
+    monkeypatch.setenv("REDIS_URL", TEST_REDIS_URL)
+    with pytest.raises(ValueError, match="application Redis"):
+        integration_settings()
+
+
+@pytest.mark.skipif(os.getenv("RUN_MEMORY_INTEGRATION") != "1", reason="Requires dedicated test Redis and PostgreSQL")
 def test_redis_checkpoint_and_postgres_summary_across_turns():
     class FakeModel:
         tools = []
@@ -32,11 +85,13 @@ def test_redis_checkpoint_and_postgres_summary_across_turns():
             return {"messages": [AIMessage(content="ok")]}
 
     async def run():
-        settings = Settings(openai_api_key="unused")
+        settings = integration_settings()
         redis = await create_redis_resources(settings)
-        postgres = await create_postgres_resources(settings)
+        postgres = None
         thread_id = str(uuid4())
         try:
+            postgres = await create_postgres_resources(settings)
+            await apply_test_migrations(postgres)
             repository = PostgresSummaryRepository(postgres.sessions)
             model = FakeModel()
             graph = Graph(model, redis.checkpointer, repository, context_window_size=25)
@@ -49,10 +104,12 @@ def test_redis_checkpoint_and_postgres_summary_across_turns():
             return model.seen, snapshot, state.values
         finally:
             try:
-                async with postgres.sessions.begin() as session:
-                    await session.execute(delete(MemorySummaries).where(MemorySummaries.thread_id == thread_id))
+                if postgres is not None:
+                    async with postgres.sessions.begin() as session:
+                        await session.execute(delete(MemorySummaries).where(MemorySummaries.thread_id == thread_id))
             finally:
-                await postgres.close()
+                if postgres is not None:
+                    await postgres.close()
                 await redis.close()
 
     # psycopg async connections require a selector loop on Windows.

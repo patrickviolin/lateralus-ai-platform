@@ -158,11 +158,28 @@ cd lateralus-backend
 uv run pytest app/tests
 ```
 
-With the local containers running and the schema applied, set
-`RUN_MEMORY_INTEGRATION=1` to include the Redis/PostgreSQL integration test.
-On Windows, psycopg needs a selector event loop; the integration test selects
-one explicitly. The `uvicorn --reload` command above also uses a selector loop
-on Windows.
+The memory integration test uses separate Redis and PostgreSQL containers, not
+the application's databases. Start them with:
+
+```bash
+docker compose --profile test up -d --wait redis-test-database postgres-test-database
+```
+
+Then opt in to the integration test:
+
+```bash
+cd lateralus-backend
+RUN_MEMORY_INTEGRATION=1 uv run pytest app/tests
+```
+
+In PowerShell, set `$env:RUN_MEMORY_INTEGRATION='1'` before running
+`uv run pytest app/tests`. The test applies the summary SQL migrations to
+`lateralus_test_db` automatically. It uses `localhost:55432` for PostgreSQL
+and `localhost:56379` for Redis; `TEST_POSTGRES_URL` and `TEST_REDIS_URL` can
+override those endpoints, but the test rejects the application's database
+URLs. On Windows, psycopg needs a selector event loop; the integration test
+selects one explicitly. The `uvicorn --reload` command above also uses a
+selector loop on Windows.
 
 Backend smoke stream:
 
